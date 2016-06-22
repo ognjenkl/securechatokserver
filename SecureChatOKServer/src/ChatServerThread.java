@@ -55,11 +55,11 @@ public class ChatServerThread extends Thread{
 					notifyAllThreadsAboutUserChange();
 				} else if (type.equals("chat")){
 					if(mapThreads.get(to) != null)
-						mapThreads.get(to).sendMessageAsJson(to, from, type, data);
+						mapThreads.get(to).sendMessage(to, from, type, data);
 					else
-						mapThreads.get(from).sendMessageAsJson(from, to, "server", "Korisnik \""+to+"\" se odjavio!");
+						mapThreads.get(from).sendMessage(from, to, "server", "Korisnik \""+to+"\" se odjavio!");
 				}else{
-					System.out.println("Someting is wrong");
+					System.out.println("ServerThread nepoznat type poruke");
 				}
 				
 			}//end while		
@@ -99,7 +99,7 @@ public class ChatServerThread extends Thread{
 		return clients;
 	}
 	
-	public void sendMessageAsJson(String to, String from, String type, String data){
+	public void sendMessage(String to, String from, String type, String data){
 		JSONObject jsonObj = new JSONObject();
 		try {
 			jsonObj.put("to", to);
@@ -126,7 +126,7 @@ public class ChatServerThread extends Thread{
 			String type = "updateUsers";
 			String data = clients;
 			
-			entry.getValue().sendMessageAsJson(to, from, type, data);
+			entry.getValue().sendMessage(to, from, type, data);
 		}
 	}
 
