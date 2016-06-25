@@ -1,14 +1,20 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.util.Base64;
 import java.util.Map;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import secureLib.CryptoImpl;
 
 public class ChatServerThread extends Thread{
 
@@ -18,7 +24,9 @@ public class ChatServerThread extends Thread{
 	Map<String, ChatServerThread> mapThreads;
 	String userOfThread;
 
-	String request;
+	
+	byte[] symmetricKey = null;
+	String opModeSymmetric = "";
 	
 	public ChatServerThread(Socket socket, Map<String, ChatServerThread> mapThreads){
 		this.socket = socket;
@@ -31,43 +39,107 @@ public class ChatServerThread extends Thread{
 			out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
 			
 			
-			while ((request = in.readLine()) != null){
-				//json {"data":"og","from":"og","to":"s","type":"login"}
-				System.out.println("Dobio server: "+request);
-				JSONObject jsonObject = new JSONObject(request);
-				String to	 = jsonObject.getString("to");
-				String from	 = jsonObject.getString("from");
-				String type	 = jsonObject.getString("type");
-				String data	 = jsonObject.getString("data");
-
-				if(type.equals("login")){
-					//edit, authentication needed
-					if(mapThreads.get(from) != null){
-						out.println("login failed");
-						continue;
+			symmetricKey = null;
+			opModeSymmetric = "";
+			byte[] requestDecoded = null;
+			byte[] requestDecrypted = null;
+			String requestString = "";
+			String opModeAsymmetric = "";
+			String request = "";
+			int counter = 0;
+			
+			
+//			while(true){
+				while ((request = in.readLine()) != null){
+					if(symmetricKey == null){
+						//asymmetric decryption
+						opModeAsymmetric = "RSA/ECB/PKCS1Padding";
+						String privateKeyPath = "pki/srv2048.key";
+						File filePrivateKey = new File(privateKeyPath);
+						KeyPair privateKeyPair = CryptoImpl.getKeyPair(filePrivateKey);
+						System.out.println("server request1: " + request);
+						requestDecoded = Base64.getDecoder().decode(request.getBytes(StandardCharsets.UTF_8));
+						requestDecrypted = CryptoImpl.asymmetricEncryptDecrypt(opModeAsymmetric, privateKeyPair.getPrivate(), requestDecoded, false);
+						requestString = new String(requestDecrypted, StandardCharsets.UTF_8);
+						//{"alg":"AES/ECB/PKCS7Padding","key":"&!?c`?V??E\r?0\u000b??"}
+						System.out.println("requestString: " + requestString);
+						JSONObject jsonRequest = new JSONObject(requestString);
+						opModeSymmetric = jsonRequest.getString("alg");
+						symmetricKey = Base64.getDecoder().decode(jsonRequest.getString("key").getBytes(StandardCharsets.UTF_8));
+						
+						String predefinedOKTag = "asymmOK";
+						System.out.println("server symmetric key1: " + new String(symmetricKey, StandardCharsets.UTF_8));
+						byte[] responseCrypto = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, predefinedOKTag.getBytes(StandardCharsets.UTF_8), true);
+						byte[] responseBase64 = Base64.getEncoder().encode(responseCrypto);
+						String responseString = new String(responseBase64, StandardCharsets.UTF_8);
+						out.println(responseString);
+						System.out.println("server sent: "  + responseString);
+						request = null;
+						requestString = null;
+						
 					}
-					mapThreads.put(from, this);
-					userOfThread = from;
-					showAllClients();
-					String clients = getAllClients();
-					System.out.println("Svi kljenti na serveru: " + clients);
-					out.println(clients);
-					notifyAllThreadsAboutUserChange();
-				} else if (type.equals("chat")){
-					if(mapThreads.get(to) != null)
-						mapThreads.get(to).sendMessage(to, from, type, data);
-					else
-						mapThreads.get(from).sendMessage(from, to, "server", "Korisnik \""+to+"\" se odjavio!");
-				}else{
-					System.out.println("ServerThread nepoznat type poruke");
-				}
+					else{
+						//symmetric decription
+						System.out.println("server request: " + request);
+						requestDecoded = Base64.getDecoder().decode(request.getBytes(StandardCharsets.UTF_8));
+						System.out.println("server symmetric key2: " + new String(symmetricKey, StandardCharsets.UTF_8));
+						try{
+							requestDecrypted = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, requestDecoded, false);
+						} catch (Exception e){
+							e.printStackTrace();
+						}
+						System.out.println("server requestDecrypted: " + new String(requestDecrypted, StandardCharsets.UTF_8));
+						
+						requestString = new String(requestDecrypted, StandardCharsets.UTF_8);
+						System.out.println("server request decrypted: " + requestString);
+						//json {"data":"og","from":"og","to":"s","type":"login"}
+						System.out.println("Dobio server: " + requestString);
+						JSONObject jsonObject = new JSONObject(requestString);
+						String to	 = jsonObject.getString("to");
+						String from	 = jsonObject.getString("from");
+						String type	 = jsonObject.getString("type");
+						String data	 = jsonObject.getString("data");
+
+						if(type.equals("login")){
+							//edit, authentication needed
+							if(mapThreads.get(from) != null){
+								out.println("login failed");
+								continue;
+							}
+							mapThreads.put(from, this);
+							userOfThread = from;
+							showAllClients();
+							String clients = getAllClients();
+							System.out.println("Svi kljenti na serveru: " + clients);
+							out.println(clients);
+							notifyAllThreadsAboutUserChange();
+						} else if (type.equals("chat")){
+							if(mapThreads.get(to) != null)
+								mapThreads.get(to).sendMessage(to, from, type, data);
+							else
+								mapThreads.get(from).sendMessage(from, to, "server", "Korisnik \""+to+"\" se odjavio!");
+						}else
+							System.out.println("ServerThread nepoznat type poruke");
+						request = null;
+					}
+					
+				}	
+//				System.out.println("counter: " + counter++);
+//			}//end while
 				
-			}//end while		
 			
+			//symmetricKey = null;
+			//opModeSymmetric = "";
 			
-		} catch (IOException | JSONException e) {	
+	
+			
+		} catch (JSONException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
 			System.out.println("IOException: java.net.SocketException: Connection reset");
 		} finally {
+			System.out.println("otkud ovdjeeeeeee");
 			try {
 				mapThreads.remove(userOfThread);
 				notifyAllThreadsAboutUserChange();
@@ -75,6 +147,8 @@ public class ChatServerThread extends Thread{
 				in.close();
 				out.close();
 				socket.close();
+				symmetricKey = null;
+				opModeSymmetric = "";
 			} catch (IOException e) {
 				System.out.println("Finally catch");
 				e.printStackTrace();
@@ -129,5 +203,7 @@ public class ChatServerThread extends Thread{
 			entry.getValue().sendMessage(to, from, type, data);
 		}
 	}
+	
+	
 
 }

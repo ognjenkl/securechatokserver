@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 //import java.util.concurrent.CopyOnWriteArrayList;
 
+import secureLib.CryptoImpl;
+
 
 public class ChatServer {
 	
@@ -29,7 +31,7 @@ public class ChatServer {
 				//listThreads.add(cst);
 				//showAllClients();
 			}
-				
+			
 			sSocket.close();
 		
 		} catch (IOException e) {
