@@ -149,7 +149,10 @@ public class ChatServerThread extends Thread{
 						File pubKeyFile = new File("pki/" + data + "2048.pub");
 						if (pubKeyFile.exists()){
 							PublicKey pubKey = CryptoImpl.getPublicKey(pubKeyFile);
-							sendMessage(from, to, MessageType.PUBLICKEY, pubKey.toString());
+							//od servera dobija public key iako je u to naziv krajnjeg korisnika (client-a)
+							byte[] pubKeyBase64 = Base64.getEncoder().encode(pubKey.getEncoded());
+							String pubKeyString = new String(pubKeyBase64, StandardCharsets.UTF_8);
+							sendMessage(from, to, MessageType.PUBLICKEY, new String(pubKeyString));
 						} else
 							System.out.println("Nema javnog kljuca na trazenoj putanji");
 						
