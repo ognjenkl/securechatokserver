@@ -1,6 +1,8 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -10,11 +12,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Properties;
 
+import org.bouncycastle.pqc.crypto.MessageEncryptor;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import secureLib.CryptoImpl;
+import utilLib.MessageType;
 
 public class ChatServerThread extends Thread{
 
@@ -24,13 +29,39 @@ public class ChatServerThread extends Thread{
 	Map<String, ChatServerThread> mapThreads;
 	String userOfThread;
 
+
 	
 	byte[] symmetricKey = null;
 	String opModeSymmetric = "";
 	
+	Properties prop = null;
+	FileInputStream fis = null;
+	String propSymmetricOpModePaddingAes = "";
+	String propSymmetricOpModePadding3Des = "";
+	String propAsymmetricOpModePaddingRsa = "";
+	String propServerKeyPath = "";
+	
 	public ChatServerThread(Socket socket, Map<String, ChatServerThread> mapThreads){
-		this.socket = socket;
-		this.mapThreads = mapThreads;
+		try {
+			this.socket = socket;
+			this.mapThreads = mapThreads;
+		
+			prop = new Properties();
+			fis = new FileInputStream(new File("resources/config.properties"));
+			prop.load(fis);
+			propSymmetricOpModePaddingAes = prop.getProperty("symmetricOpModePaddingAes");
+			propSymmetricOpModePadding3Des = prop.getProperty("symmetricOpModePadding3Des");
+			propAsymmetricOpModePaddingRsa = prop.getProperty("asymmetricOpModePaddingRsa");
+			propServerKeyPath = prop.getProperty("serverKeyPath");
+			
+			fis.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
 	public void run(){
@@ -50,8 +81,8 @@ public class ChatServerThread extends Thread{
 			while ((request = in.readLine()) != null){
 				if(symmetricKey == null){
 					//asymmetric decryption
-					opModeAsymmetric = "RSA/ECB/PKCS1Padding";
-					String privateKeyPath = "pki/srv2048.key";
+					opModeAsymmetric = propAsymmetricOpModePaddingRsa;
+					String privateKeyPath = propServerKeyPath;
 					File filePrivateKey = new File(privateKeyPath);
 					KeyPair privateKeyPair = CryptoImpl.getKeyPair(filePrivateKey);
 					requestDecoded = Base64.getDecoder().decode(request.getBytes(StandardCharsets.UTF_8));
@@ -60,10 +91,10 @@ public class ChatServerThread extends Thread{
 					//{"alg":"DESede/ECB/PKCS7Padding","key":"MTF2Kf7Zq4+rbrCK5pjTYpTva26rMtXl"}
 					System.out.println("requestString: " + requestString);
 					JSONObject jsonRequest = new JSONObject(requestString);
-					opModeSymmetric = jsonRequest.getString("alg");
-					symmetricKey = Base64.getDecoder().decode(jsonRequest.getString("key").getBytes(StandardCharsets.UTF_8));
+					opModeSymmetric = jsonRequest.getString(MessageType.ALGORITHM);
+					symmetricKey = Base64.getDecoder().decode(jsonRequest.getString(MessageType.KEY).getBytes(StandardCharsets.UTF_8));
 					
-					String predefinedOKTag = "asymmOK";
+					String predefinedOKTag = MessageType.OK;
 					byte[] responseCrypto = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, predefinedOKTag.getBytes(StandardCharsets.UTF_8), true);
 					byte[] responseBase64 = Base64.getEncoder().encode(responseCrypto);
 					String responseString = new String(responseBase64, StandardCharsets.UTF_8);
@@ -84,7 +115,7 @@ public class ChatServerThread extends Thread{
 					String type	 = jsonObject.getString("type");
 					String data	 = jsonObject.getString("data");
 
-					if(type.equals("login")){
+					if(type.equals(MessageType.LOGIN)){
 						//edit, authentication needed
 						if(mapThreads.get(from) != null){
 							out.println("login failed");
@@ -95,13 +126,16 @@ public class ChatServerThread extends Thread{
 						showAllClients();
 						String clients = getAllClients();
 						System.out.println("Svi kljenti na serveru: " + clients);
-						out.println(clients);
+						
+						//out.println(clients);
+						sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clients);
+						
 						notifyAllThreadsAboutUserChange();
-					} else if (type.equals("chat")){
+					} else if (type.equals(MessageType.CHAT)){
 						if(mapThreads.get(to) != null)
 							mapThreads.get(to).sendMessage(to, from, type, data);
 						else
-							mapThreads.get(from).sendMessage(from, to, "server", "Korisnik \""+to+"\" se odjavio!");
+							mapThreads.get(from).sendMessage(from, to, MessageType.SERVER, "Korisnik \""+to+"\" se odjavio!");
 					}else
 						System.out.println("ServerThread nepoznat type poruke");
 					request = null;
@@ -123,8 +157,8 @@ public class ChatServerThread extends Thread{
 				in.close();
 				out.close();
 				socket.close();
-				symmetricKey = null;
-				opModeSymmetric = "";
+				//symmetricKey = null;
+				//opModeSymmetric = "";
 			} catch (IOException e) {
 				System.out.println("Finally catch");
 				e.printStackTrace();
@@ -156,8 +190,12 @@ public class ChatServerThread extends Thread{
 			jsonObj.put("from", from);
 			jsonObj.put("type", type);
 			jsonObj.put("data", data);
-			//System.out.println("print raw json: " + jsonObj);
-			out.println(jsonObj);
+			
+			byte[] cipher = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, jsonObj.toString().getBytes(StandardCharsets.UTF_8), true);
+			byte[] cipherEncoded = Base64.getEncoder().encode(cipher);
+			String cipherString = new String(cipherEncoded, StandardCharsets.UTF_8);
+			
+			out.println(cipherString);
 
 		} catch (JSONException e) {
 			// TODO Auto-generated catch block
@@ -172,8 +210,8 @@ public class ChatServerThread extends Thread{
 			//json {"data":"og;ir;dr;","from":"s","to":"og","type":"updateUsers"}
 			
 			String to = entry.getKey();
-			String from = "s";
-			String type = "updateUsers";
+			String from = MessageType.SERVER;
+			String type = MessageType.UPDATE;
 			String data = clients;
 			
 			entry.getValue().sendMessage(to, from, type, data);
