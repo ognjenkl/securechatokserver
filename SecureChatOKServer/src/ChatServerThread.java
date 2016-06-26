@@ -95,7 +95,7 @@ public class ChatServerThread extends Thread{
 					opModeSymmetric = jsonRequest.getString(MessageType.ALGORITHM);
 					symmetricKey = Base64.getDecoder().decode(jsonRequest.getString(MessageType.KEY).getBytes(StandardCharsets.UTF_8));
 					
-					String predefinedOKTag = MessageType.OK;
+					String predefinedOKTag = MessageType.lOGINOK;
 					byte[] responseCrypto = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, predefinedOKTag.getBytes(StandardCharsets.UTF_8), true);
 					byte[] responseBase64 = Base64.getEncoder().encode(responseCrypto);
 					String responseString = new String(responseBase64, StandardCharsets.UTF_8);
@@ -148,10 +148,11 @@ public class ChatServerThread extends Thread{
 					} else if (type.equals(MessageType.PUBLICKEY) ){
 						File pubKeyFile = new File("pki/" + data + "2048.pub");
 						if (pubKeyFile.exists()){
-							PublicKey pubKey = CryptoImpl.getPublicKey(pubKeyFile);
+							//PublicKey pubKey = CryptoImpl.getPublicKey(pubKeyFile);
 							//od servera dobija public key iako je u to naziv krajnjeg korisnika (client-a)
-							byte[] pubKeyBase64 = Base64.getEncoder().encode(pubKey.getEncoded());
-							String pubKeyString = new String(pubKeyBase64, StandardCharsets.UTF_8);
+							//byte[] pubKeyBase64 = Base64.getEncoder().encode(pubKey.getEncoded());
+							//String pubKeyString = new String(pubKeyBase64, StandardCharsets.UTF_8);
+							String pubKeyString = CryptoImpl.getPublicKeyAsBase64EncodedString(pubKeyFile);
 							sendMessage(from, to, MessageType.PUBLICKEY, new String(pubKeyString));
 						} else
 							System.out.println("Nema javnog kljuca na trazenoj putanji");
