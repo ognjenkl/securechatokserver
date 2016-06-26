@@ -131,13 +131,29 @@ public class ChatServerThread extends Thread{
 						//out.println(clients);
 						sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clients);
 						
+//						try {
+//							Thread.sleep(5000);
+//						} catch (InterruptedException e) {
+//							// TODO Auto-generated catch block
+//							e.printStackTrace();
+//						}
+						
 						notifyAllThreadsAboutUserChange();
+						
 					} else if (type.equals(MessageType.CHAT)){
 						if(mapThreads.get(to) != null)
 							mapThreads.get(to).sendMessage(to, from, type, data);
 						else
 							mapThreads.get(from).sendMessage(from, to, MessageType.SERVER, "Korisnik \""+to+"\" se odjavio!");
-					}else
+					} else if (type.equals(MessageType.PUBLICKEY) ){
+						File pubKeyFile = new File("pki/" + data + "2048.pub");
+						if (pubKeyFile.exists()){
+							PublicKey pubKey = CryptoImpl.getPublicKey(pubKeyFile);
+							sendMessage(from, to, MessageType.PUBLICKEY, pubKey.toString());
+						} else
+							System.out.println("Nema javnog kljuca na trazenoj putanji");
+						
+					} else
 						System.out.println("ServerThread nepoznat type poruke");
 					request = null;
 				}
