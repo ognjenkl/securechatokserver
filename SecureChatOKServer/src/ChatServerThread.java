@@ -10,16 +10,16 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
+import java.security.PublicKey;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Properties;
 
-import org.bouncycastle.pqc.crypto.MessageEncryptor;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import secureLib.CryptoImpl;
-import utilLib.MessageType;
+import secureUtil.MessageType;
 
 public class ChatServerThread extends Thread{
 
@@ -28,9 +28,10 @@ public class ChatServerThread extends Thread{
 	PrintWriter out;
 	Map<String, ChatServerThread> mapThreads;
 	String userOfThread;
-
-
 	
+	/**
+	 * Secret key of user (client) of thread.
+	 */
 	byte[] symmetricKey = null;
 	String opModeSymmetric = "";
 	
@@ -191,6 +192,7 @@ public class ChatServerThread extends Thread{
 			jsonObj.put("type", type);
 			jsonObj.put("data", data);
 			
+			System.out.println("Server prije enkripcije i slanja: " + jsonObj.toString());
 			byte[] cipher = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, jsonObj.toString().getBytes(StandardCharsets.UTF_8), true);
 			byte[] cipherEncoded = Base64.getEncoder().encode(cipher);
 			String cipherString = new String(cipherEncoded, StandardCharsets.UTF_8);
