@@ -10,7 +10,6 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
-import java.security.PublicKey;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Properties;
@@ -130,17 +129,8 @@ public class ChatServerThread extends Thread{
 						//System.out.println("Svi kljenti na serveru: " + clients);
 						System.out.println("Svi kljenti na serveru: " + clientsWithPubKeys);
 						
-						//out.println(clients);
-						//sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clients);
 						sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clientsWithPubKeys);
-						
-//						try {
-//							Thread.sleep(5000);
-//						} catch (InterruptedException e) {
-//							// TODO Auto-generated catch block
-//							e.printStackTrace();
-//						}
-						
+
 						notifyAllThreadsAboutUserChange();
 						
 					} else if (type.equals(MessageType.CHAT)){
@@ -151,10 +141,6 @@ public class ChatServerThread extends Thread{
 					} else if (type.equals(MessageType.PUBLICKEY) ){
 						File pubKeyFile = new File("pki/" + data + "2048.pub");
 						if (pubKeyFile.exists()){
-							//PublicKey pubKey = CryptoImpl.getPublicKey(pubKeyFile);
-							//od servera dobija public key iako je u to naziv krajnjeg korisnika (client-a)
-							//byte[] pubKeyBase64 = Base64.getEncoder().encode(pubKey.getEncoded());
-							//String pubKeyString = new String(pubKeyBase64, StandardCharsets.UTF_8);
 							String pubKeyString = CryptoImpl.getPublicKeyAsBase64EncodedString(pubKeyFile);
 							sendMessage(from, to, MessageType.PUBLICKEY, new String(pubKeyString));
 						} else
