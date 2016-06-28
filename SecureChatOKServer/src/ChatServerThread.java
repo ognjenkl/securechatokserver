@@ -119,17 +119,20 @@ public class ChatServerThread extends Thread{
 					if(type.equals(MessageType.LOGIN)){
 						//edit, authentication needed
 						if(mapThreads.get(from) != null){
-							out.println("login failed");
+							out.println("ChatServerThread: login failed");
 							continue;
 						}
 						mapThreads.put(from, this);
 						userOfThread = from;
 						showAllClients();
-						String clients = getAllClients();
-						System.out.println("Svi kljenti na serveru: " + clients);
+						//String clients = getAllClients();
+						String clientsWithPubKeys = getAllClientsWithPublicKeys();
+						//System.out.println("Svi kljenti na serveru: " + clients);
+						System.out.println("Svi kljenti na serveru: " + clientsWithPubKeys);
 						
 						//out.println(clients);
-						sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clients);
+						//sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clients);
+						sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clientsWithPubKeys);
 						
 //						try {
 //							Thread.sleep(5000);
@@ -157,8 +160,10 @@ public class ChatServerThread extends Thread{
 						} else
 							System.out.println("Nema javnog kljuca na trazenoj putanji");
 						
+					} else if (type.equals(MessageType.CHATKEY)) {
+						mapThreads.get(to).sendMessage(to, from, type, data);
 					} else
-						System.out.println("ServerThread nepoznat type poruke");
+						System.out.println("ServerThread: nepoznat type poruke");
 					request = null;
 				}
 				
@@ -204,6 +209,36 @@ public class ChatServerThread extends Thread{
 		return clients;
 	}
 	
+	public String getAllClientsWithPublicKeys(){
+		//String clientsWithPubKeys = "";
+		JSONObject jsonObj = new JSONObject();
+		String pubKeyString = "";
+		File fileKey = null;
+		try {
+			jsonObj.put("clients", getAllClients());
+			
+			for(Map.Entry<String, ChatServerThread> entry : mapThreads.entrySet()){
+				fileKey = new File("pki/" + entry.getKey() + "2048.pub");
+				if(fileKey.exists()){
+					pubKeyString = CryptoImpl.getPublicKeyAsBase64EncodedString(fileKey);
+					//clientsWithPubKeys += entry.getKey()+";";
+					jsonObj.put(entry.getKey(), pubKeyString);
+				} else
+					continue;
+			}
+			
+		} catch (JSONException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		System.out.println("json all clients and public keys: " + jsonObj.toString());
+		return jsonObj.toString();
+	}
+	
 	public void sendMessage(String to, String from, String type, String data){
 		JSONObject jsonObj = new JSONObject();
 		try {
@@ -227,14 +262,18 @@ public class ChatServerThread extends Thread{
 	
 	
 	public void notifyAllThreadsAboutUserChange(){
-		String clients = getAllClients();
+		//String clients = getAllClients();
+		String clientsWithPubKeys = getAllClientsWithPublicKeys();
 		for(Map.Entry<String, ChatServerThread> entry : mapThreads.entrySet()){
 			//json {"data":"og;ir;dr;","from":"s","to":"og","type":"updateUsers"}
 			
 			String to = entry.getKey();
 			String from = MessageType.SERVER;
 			String type = MessageType.UPDATE;
-			String data = clients;
+			//String data = clients;
+			String data = clientsWithPubKeys;
+			
+			
 			
 			entry.getValue().sendMessage(to, from, type, data);
 		}
