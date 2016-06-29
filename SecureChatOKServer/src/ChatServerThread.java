@@ -80,16 +80,18 @@ public class ChatServerThread extends Thread{
 			
 			while ((request = in.readLine()) != null){
 				if(symmetricKey == null){
-					//asymmetric decryption
 					opModeAsymmetric = propAsymmetricOpModePaddingRsa;
 					String privateKeyPath = propServerKeyPath;
+					
 					File filePrivateKey = new File(privateKeyPath);
 					KeyPair privateKeyPair = CryptoImpl.getKeyPair(filePrivateKey);
+					
 					requestDecoded = Base64.getDecoder().decode(request.getBytes(StandardCharsets.UTF_8));
 					requestDecrypted = CryptoImpl.asymmetricEncryptDecrypt(opModeAsymmetric, privateKeyPair.getPrivate(), requestDecoded, false);
 					requestString = new String(requestDecrypted, StandardCharsets.UTF_8);
+					
 					//{"alg":"DESede/ECB/PKCS7Padding","key":"MTF2Kf7Zq4+rbrCK5pjTYpTva26rMtXl"}
-					System.out.println("requestString: " + requestString);
+					//System.out.println("requestString: " + requestString);
 					JSONObject jsonRequest = new JSONObject(requestString);
 					opModeSymmetric = jsonRequest.getString(MessageType.ALGORITHM);
 					symmetricKey = Base64.getDecoder().decode(jsonRequest.getString(MessageType.KEY).getBytes(StandardCharsets.UTF_8));
@@ -181,7 +183,7 @@ public class ChatServerThread extends Thread{
 
 	
 	public void showAllClients(){
-		System.out.println("All clients:");
+		//System.out.println("All clients:");
 		for(Map.Entry<String, ChatServerThread> entry : mapThreads.entrySet()){
 			System.out.println(entry.getKey());
 		}
