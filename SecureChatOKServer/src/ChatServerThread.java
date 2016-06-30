@@ -93,7 +93,6 @@ public class ChatServerThread extends Thread{
 					requestString = new String(requestDecrypted, StandardCharsets.UTF_8);
 					
 					//{"alg":"DESede/ECB/PKCS7Padding","key":"MTF2Kf7Zq4+rbrCK5pjTYpTva26rMtXl"}
-					//System.out.println("requestString: " + requestString);
 					JSONObject jsonRequest = new JSONObject(requestString);
 					opModeSymmetric = jsonRequest.getString(MessageType.ALGORITHM);
 					symmetricKey = Base64.getDecoder().decode(jsonRequest.getString(MessageType.KEY).getBytes(StandardCharsets.UTF_8));
