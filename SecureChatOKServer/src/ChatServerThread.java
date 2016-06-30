@@ -9,7 +9,9 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.security.CryptoPrimitive;
 import java.security.KeyPair;
+import java.security.PublicKey;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Properties;
@@ -33,6 +35,7 @@ public class ChatServerThread extends Thread{
 	 */
 	byte[] symmetricKey = null;
 	String opModeSymmetric = "";
+	String hashFunction = "";
 	
 	Properties prop = null;
 	FileInputStream fis = null;
@@ -71,23 +74,22 @@ public class ChatServerThread extends Thread{
 			
 			symmetricKey = null;
 			opModeSymmetric = "";
+			hashFunction = "";
 			byte[] requestDecoded = null;
 			byte[] requestDecrypted = null;
 			String requestString = "";
 			String opModeAsymmetric = "";
 			String request = "";
 			
+			opModeAsymmetric = propAsymmetricOpModePaddingRsa;
+			
+			File filePrivateKey = new File(propServerKeyPath);
+			KeyPair privateKeyPairServer = CryptoImpl.getKeyPair(filePrivateKey);
 			
 			while ((request = in.readLine()) != null){
 				if(symmetricKey == null){
-					opModeAsymmetric = propAsymmetricOpModePaddingRsa;
-					String privateKeyPath = propServerKeyPath;
-					
-					File filePrivateKey = new File(privateKeyPath);
-					KeyPair privateKeyPair = CryptoImpl.getKeyPair(filePrivateKey);
-					
 					requestDecoded = Base64.getDecoder().decode(request.getBytes(StandardCharsets.UTF_8));
-					requestDecrypted = CryptoImpl.asymmetricEncryptDecrypt(opModeAsymmetric, privateKeyPair.getPrivate(), requestDecoded, false);
+					requestDecrypted = CryptoImpl.asymmetricEncryptDecrypt(opModeAsymmetric, privateKeyPairServer.getPrivate(), requestDecoded, false);
 					requestString = new String(requestDecrypted, StandardCharsets.UTF_8);
 					
 					//{"alg":"DESede/ECB/PKCS7Padding","key":"MTF2Kf7Zq4+rbrCK5pjTYpTva26rMtXl"}
@@ -95,13 +97,27 @@ public class ChatServerThread extends Thread{
 					JSONObject jsonRequest = new JSONObject(requestString);
 					opModeSymmetric = jsonRequest.getString(MessageType.ALGORITHM);
 					symmetricKey = Base64.getDecoder().decode(jsonRequest.getString(MessageType.KEY).getBytes(StandardCharsets.UTF_8));
+					hashFunction = jsonRequest.getString(MessageType.HASH);
 					
-					String predefinedOKTag = MessageType.lOGINOK;
-					byte[] responseCrypto = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, predefinedOKTag.getBytes(StandardCharsets.UTF_8), true);
-					byte[] responseBase64 = Base64.getEncoder().encode(responseCrypto);
-					String responseString = new String(responseBase64, StandardCharsets.UTF_8);
 					
-					out.println(responseString);
+					//server signs response
+					String predefinedOKTag = MessageType.OK;
+					JSONObject jsonResponseOK = new JSONObject();
+				//digital signature
+					byte[] digest = CryptoImpl.hash(hashFunction, predefinedOKTag.getBytes(StandardCharsets.UTF_8));
+					byte[] digitalSignature = CryptoImpl.asymmetricEncryptDecrypt(opModeAsymmetric, privateKeyPairServer.getPrivate(), digest, true);
+					String digitalSignatureEncodedString = new String(Base64.getEncoder().encode(digitalSignature), StandardCharsets.UTF_8);
+				//end digital signature
+				//cipher
+					jsonResponseOK.put(MessageType.DIGSIG, digitalSignatureEncodedString);
+					jsonResponseOK.put(MessageType.DATA, predefinedOKTag);
+					byte[] jsonResponseOKEncoded = Base64.getEncoder().encode(jsonResponseOK.toString().getBytes(StandardCharsets.UTF_8));
+					byte[] responseCrypto = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, jsonResponseOKEncoded, true);
+					String responseEncodedString =  new String(Base64.getEncoder().encode(responseCrypto), StandardCharsets.UTF_8);
+				//end cipher
+					
+					//send response
+					out.println(responseEncodedString);
 					
 				}
 				else{
@@ -109,13 +125,14 @@ public class ChatServerThread extends Thread{
 					requestDecoded = Base64.getDecoder().decode(request.getBytes(StandardCharsets.UTF_8));
 					requestDecrypted = CryptoImpl.symmetricEncryptDecrypt(opModeSymmetric, symmetricKey, requestDecoded, false);						
 					requestString = new String(requestDecrypted, StandardCharsets.UTF_8);
+					//String requestStringDecodedString = new String(Base64.getDecoder().decode(requestString.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
 					System.out.println("server request decrypted: " + requestString);
 					//json {"data":"og","from":"og","to":"s","type":"login"}
-					JSONObject jsonObject = new JSONObject(requestString);
-					String to	 = jsonObject.getString("to");
-					String from	 = jsonObject.getString("from");
-					String type	 = jsonObject.getString("type");
-					String data	 = jsonObject.getString("data");
+					JSONObject jsonRequest = new JSONObject(requestString);
+					String to	 = jsonRequest.getString("to");
+					String from	 = jsonRequest.getString("from");
+					String type	 = jsonRequest.getString("type");
+					String data	 = jsonRequest.getString("data");
 
 					if(type.equals(MessageType.LOGIN)){
 						//edit, authentication needed
@@ -123,17 +140,48 @@ public class ChatServerThread extends Thread{
 							out.println("ChatServerThread: login failed");
 							continue;
 						}
-						mapThreads.put(from, this);
-						userOfThread = from;
-						showAllClients();
-						//String clients = getAllClients();
-						String clientsWithPubKeys = getAllClientsWithPublicKeys();
-						//System.out.println("Svi kljenti na serveru: " + clients);
-						System.out.println("Svi kljenti na serveru: " + clientsWithPubKeys);
-						
-						sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clientsWithPubKeys);
 
-						notifyAllThreadsAboutUserChange();
+						// authentication and varify digital signature
+						File pubKeyFile = new File("pki/" + from + "2048.pub");
+						if(pubKeyFile.exists()){
+							PublicKey publicKeyClient = CryptoImpl.getPublicKey(pubKeyFile);
+							JSONObject jsonUsernameAndPassword = new JSONObject(data);
+							if (
+									authenticate(
+											jsonUsernameAndPassword.getString(MessageType.USERNAME), 
+											jsonUsernameAndPassword.getString(MessageType.PASSWORD))
+									
+									&&
+									
+									CryptoImpl.verifyDigitalSignatureAgainstPlainText(
+										jsonUsernameAndPassword.toString(), 
+										jsonRequest.getString(MessageType.DIGSIG), 
+										publicKeyClient, 
+										opModeAsymmetric, 
+										privateKeyPairServer, 
+										opModeSymmetric, 
+										symmetricKey, 
+										hashFunction)){
+							
+								mapThreads.put(from, this);
+								userOfThread = from;
+								showAllClients();
+								//String clients = getAllClients();
+								String clientsWithPubKeys = getAllClientsWithPublicKeys();
+								//System.out.println("Svi kljenti na serveru: " + clients);
+								System.out.println("Svi kljenti na serveru: " + clientsWithPubKeys);
+								
+								sendMessage(userOfThread, MessageType.SERVER, MessageType.LOGIN, clientsWithPubKeys);
+	
+								notifyAllThreadsAboutUserChange();
+							} else {
+								System.out.println("Authentikacija ili verifikacija potpisa nuspjesna");
+								out.println("Login failed");
+								continue;
+							}
+								
+						}
+
 						
 					} else if (type.equals(MessageType.CHAT)){
 						if(mapThreads.get(to) != null)
@@ -152,6 +200,7 @@ public class ChatServerThread extends Thread{
 						mapThreads.get(to).sendMessage(to, from, type, data);
 					} else
 						System.out.println("ServerThread: nepoznat type poruke");
+					
 					request = null;
 				}
 				
@@ -267,6 +316,13 @@ public class ChatServerThread extends Thread{
 		}
 	}
 	
-	
+	public boolean authenticate(String username, String password){
+		boolean status = false;
+		File userFile = new File("pki/" + username + "2048.pub");
+		if (userFile.exists() && !getAllClients().contains(username+";")){
+			status = true;
+		}
+		return status;
+	}
 
 }
