@@ -140,7 +140,7 @@ public class ChatServerThread extends Thread{
 							continue;
 						}
 
-						// authentication and varify digital signature
+						// authentication and varify client's digital signature
 						File pubKeyFile = new File("pki/" + from + "2048.pub");
 						if(pubKeyFile.exists()){
 							PublicKey publicKeyClient = CryptoImpl.getPublicKey(pubKeyFile);
